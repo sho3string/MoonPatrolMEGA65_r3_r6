@@ -1,3 +1,6 @@
 [submodule "QNICE"]
 	path = M2M/QNICE
 	url = https://github.com/sy2002/QNICE-FPGA
+[submodule "CORE/Arcade-MoonPatrol_MiSTer"]
+	path = CORE/Arcade-MoonPatrol_MiSTer
+	url = https://github.com/sho3string/Arcade-MoonPatrol_MiSTer
