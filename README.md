@@ -21,18 +21,12 @@ Run the script: a) First extract all the files within the zip to any working fol
 b) Copy the powershell or shell script to the same folder and execute it to create the following files.
 
 **Ensure the following files are present and sizes are correct**  
-
- ![image](https://github.com/user-attachments/assets/086bcade-5926-4554-81ae-7ba2e05147fb)
-
+![image](https://github.com/user-attachments/assets/f9eb2c7a-640a-485f-9e54-4091d0f4468f)
 
 For Windows run the script via PowerShell - mpatrol_rom_installer.ps1  
 Simply select the script and with the right mouse button select the Run with Powershell.
 
 For Linux/Unix/MacOS execute ./mpatrol_rom_installer.sh  
 The script will automatically create the /arcade/mpatrol folder where the generated ROMs will reside.  
-
-The output produced as a result of running the script(s) from the cmd line should match the following depending on your target platform.
-![image](https://github.com/user-attachments/assets/ee3273be-1c6c-440c-a473-b9312bc4ccbd)
-
 
 Copy or move "arcade/mpatrol" to your MEGA65 SD card: You may either use the bottom SD card tray of the MEGA65 or the tray at the backside of the computer (the latter has precedence over the first).  
