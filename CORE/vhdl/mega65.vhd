@@ -104,8 +104,12 @@ port (
    clk_i                   : in  std_logic;              -- 100 MHz clock
 
    -- Share clock and reset with the framework
-   main_clk_o              : out std_logic;              -- CORE's 54 MHz clock
+   main_clk_o              : out std_logic;              -- CORE's 30 MHz clock
    main_rst_o              : out std_logic;              -- CORE's reset, synchronized
+   
+   sound_clk_o             : out std_logic;              -- the sound clock = 3.58mhz
+   sound_rst_o             : out std_logic;
+   
 
    -- M2M's reset manager provides 2 signals:
    --    m2m:   Reset the whole machine: Core and Framework
@@ -226,35 +230,59 @@ architecture synthesis of MEGA65_Core is
 
 signal main_clk               : std_logic;               -- Core main clock
 signal main_rst               : std_logic;
+signal video_clk              : std_logic;
+signal video_rst              : std_logic;
+signal sound_clk              : std_logic;              
+signal sound_rst              : std_logic;
+signal sound_clk_3m6          : std_logic;
 
 ---------------------------------------------------------------------------------------------
 -- main_clk (MiSTer core's clock)
 ---------------------------------------------------------------------------------------------
 
+-- Unprocessed video output from the Wonderboy core
+signal main_video_red      : std_logic_vector(3 downto 0);   
+signal main_video_green    : std_logic_vector(3 downto 0);
+signal main_video_blue     : std_logic_vector(3 downto 0);
+signal main_video_vs       : std_logic;
+signal main_video_hs       : std_logic;
+signal main_video_hblank   : std_logic;
+signal main_video_vblank   : std_logic;
+
 ---------------------------------------------------------------------------------------------
 -- qnice_clk
 ---------------------------------------------------------------------------------------------
 
----------------------------------------------------------------------------------------------
--- Democore & example stuff: Delete before starting to port your own core
----------------------------------------------------------------------------------------------
+constant C_MENU_OSMPAUSE      : natural := 2;  
+constant C_FLIP_JOYS          : natural := 3;
+constant C_MENU_CRT_EMULATION : natural := 7;
+constant C_MENU_HDMI_16_9_50  : natural := 11;
+constant C_MENU_HDMI_16_9_60  : natural := 12;
+constant C_MENU_HDMI_4_3_50   : natural := 13;
+constant C_MENU_HDMI_5_4_50   : natural := 14;
 
--- Democore menu items
-constant C_MENU_HDMI_16_9_50   : natural := 12;
-constant C_MENU_HDMI_16_9_60   : natural := 13;
-constant C_MENU_HDMI_4_3_50    : natural := 14;
-constant C_MENU_HDMI_5_4_50    : natural := 15;
-constant C_MENU_HDMI_640_60    : natural := 16;
-constant C_MENU_HDMI_720_5994  : natural := 17;
-constant C_MENU_SVGA_800_60    : natural := 18;
-constant C_MENU_CRT_EMULATION  : natural := 30;
-constant C_MENU_HDMI_ZOOM      : natural := 31;
-constant C_MENU_IMPROVE_AUDIO  : natural := 32;
+constant C_MENU_VGA_STD       : natural := 20;
+constant C_MENU_VGA_15KHZHSVS : natural := 24;
+constant C_MENU_VGA_15KHZCS   : natural := 25;
 
--- QNICE clock domain
-signal qnice_demo_vd_data_o   : std_logic_vector(15 downto 0);
-signal qnice_demo_vd_ce       : std_logic;
-signal qnice_demo_vd_we       : std_logic;
+signal div_1,div_2  : std_logic_vector(2 downto 0);
+signal old_clk_v    : std_logic;
+signal clk_6        : std_logic;
+signal ce_pix       : std_logic;
+signal video_red    : std_logic_vector(7 downto 0);
+signal video_green  : std_logic_vector(7 downto 0);
+signal video_blue   : std_logic_vector(7 downto 0);
+signal video_vs     : std_logic;
+signal video_hs     : std_logic;
+signal video_vblank : std_logic;
+signal video_hblank : std_logic;
+signal video_de     : std_logic;
+
+-- ROM devices 
+signal qnice_dn_addr    : std_logic_vector(15 downto 0);
+signal qnice_dn_data    : std_logic_vector(7 downto 0);
+signal qnice_dn_wr      : std_logic;
+
 
 begin
 
@@ -309,30 +337,52 @@ begin
    main_joy_2_left_n_o  <= '1';
    main_joy_2_right_n_o <= '1';
    main_joy_2_fire_n_o  <= '1';
+   
+   -- Configure the LEDs:
+   -- Power led on and green, drive led always off
+   main_power_led_o       <= '1';
+   main_power_led_col_o   <= x"00FF00";
+   main_drive_led_o       <= '0';
+   main_drive_led_col_o   <= x"00FF00"; 
 
-
-   -- MMCME2_ADV clock generators:
-   --   @TODO YOURCORE:       54 MHz
    clk_gen : entity work.clk
       port map (
          sys_clk_i         => clk_i,           -- expects 100 MHz
-         main_clk_o        => main_clk,        -- CORE's 54 MHz clock
-         main_rst_o        => main_rst         -- CORE's reset, synchronized
+         main_clk_o        => main_clk,        -- CORE's 30 MHz clock
+         main_rst_o        => main_rst,        -- CORE's reset, synchronized
+         
+         video_clk_o       => video_clk,       -- 48Mhz
+         video_rst_o       => video_rst,
+         
+         sound_clk_o       => sound_clk,       -- 7.2 Mhz / 2 - 3.60Mhz
+         sound_rst_o       => sound_rst
+         
       ); -- clk_gen
 
    main_clk_o  <= main_clk;
    main_rst_o  <= main_rst;
-   video_clk_o <= main_clk;
-   video_rst_o <= main_rst;
+   video_clk_o <= video_clk;
+   video_rst_o <= video_rst;
+   sound_clk_o <= sound_clk;
+   sound_rst_o <= sound_rst;
+   
+   video_red_o      <= video_red;
+   video_green_o    <= video_green;
+   video_blue_o     <= video_blue;
+   video_vs_o       <= video_vs;
+   video_hs_o       <= video_hs;
+   video_hblank_o   <= video_hblank;
+   video_vblank_o   <= video_vblank;
+   video_ce_o       <= ce_pix;  
 
-   ---------------------------------------------------------------------------------------------
-   -- main_clk (MiSTer core's clock)
-   ---------------------------------------------------------------------------------------------
-
-   -- MEGA65's power led: By default, it is on and glows green when the MEGA65 is powered on.
-   -- We switch it to blue when a long reset is detected and as long as the user keeps pressing the preset button
-   main_power_led_o     <= '1';
-   main_power_led_col_o <= x"0000FF" when main_reset_m2m_i else x"00FF00";
+    -- Sound clock.
+    process (sound_clk)
+    begin
+      if rising_edge(sound_clk) then
+        sound_clk_3m6 <= not sound_clk_3m6; --  Yuck
+    end if;
+    end process;
+    
 
    -- main.vhd contains the actual MiSTer core
    i_main : entity work.main
@@ -341,23 +391,25 @@ begin
       )
       port map (
          clk_main_i           => main_clk,
+         clk_sound_i          => sound_clk_3m6,
          reset_soft_i         => main_reset_core_i,
          reset_hard_i         => main_reset_m2m_i,
-         pause_i              => main_pause_core_i,
+         pause_i              => main_pause_core_i and main_osm_control_i(C_MENU_OSMPAUSE),
 
          clk_main_speed_i     => CORE_CLK_SPEED,
 
+         video_ce_i           => clk_6,
          -- Video output
          -- This is PAL 720x576 @ 50 Hz (pixel clock 27 MHz), but synchronized to main_clk (54 MHz).
-         video_ce_o           => video_ce_o,
-         video_ce_ovl_o       => video_ce_ovl_o,
-         video_red_o          => video_red_o,
-         video_green_o        => video_green_o,
-         video_blue_o         => video_blue_o,
-         video_vs_o           => video_vs_o,
-         video_hs_o           => video_hs_o,
-         video_hblank_o       => video_hblank_o,
-         video_vblank_o       => video_vblank_o,
+         video_ce_o           => open,
+         video_ce_ovl_o       => open,
+         video_red_o          => main_video_red,
+         video_green_o        => main_video_green,
+         video_blue_o         => main_video_blue,
+         video_vs_o           => main_video_vs,
+         video_hs_o           => main_video_hs,
+         video_hblank_o       => main_video_hblank,
+         video_vblank_o       => main_video_vblank,
 
          -- audio output (pcm format, signed values)
          audio_left_o         => main_audio_left_o,
@@ -383,8 +435,54 @@ begin
          pot1_x_i             => main_pot1_x_i,
          pot1_y_i             => main_pot1_y_i,
          pot2_x_i             => main_pot2_x_i,
-         pot2_y_i             => main_pot2_y_i
+         pot2_y_i             => main_pot2_y_i,
+         
+         dn_clk_i             => qnice_clk_i,
+         dn_addr_i            => qnice_dn_addr,
+         dn_data_i            => qnice_dn_data,
+         dn_wr_i              => qnice_dn_wr,
+
+         osm_control_i        => main_osm_control_i
+       
       ); -- i_main
+      
+     process (video_clk) -- 48 MHz
+      begin
+        if falling_edge(video_clk) then
+            div_1 <= std_logic_vector(unsigned(div_1) + 1); 
+            clk_6 <= div_1(2); -- nasty! according to Sorgelig :)
+        end if;
+      end process;
+      
+      
+      process (video_clk) -- 48 MHz
+      begin
+        if rising_edge(video_clk) then
+        
+            video_ce_ovl_o <= '0';
+           
+            
+            old_clk_v <= clk_6;
+            ce_pix <= (old_clk_v and not clk_6);
+            
+            div_2 <= std_logic_vector(unsigned(div_2) + 1); 
+
+            -- OSD clock.
+            if div_2(0) = '1' then
+               video_ce_ovl_o <= '1'; 
+            end if;
+
+            video_red   <= main_video_red   & main_video_red;
+            video_green <= main_video_green & main_video_green;
+            video_blue  <= main_video_blue  & main_video_blue;
+
+            video_hs     <= main_video_hs;
+            video_vs     <= main_video_vs;
+            video_hblank <= main_video_hblank;
+            video_vblank <= main_video_vblank;
+            video_de     <= not (main_video_hblank or main_video_vblank);
+        end if;
+      end process;
 
    ---------------------------------------------------------------------------------------------
    -- Audio and video settings (QNICE clock domain)
@@ -397,31 +495,26 @@ begin
    -- while in the 4:3 mode we are outputting a 5:4 image. This is kind of odd, but it seemed that our 4/3 aspect ratio
    -- adjusted image looks best on a 5:4 monitor and the other way round.
    -- Not sure if this will stay forever or if we will come up with a better naming convention.
-   qnice_video_mode_o <= C_VIDEO_SVGA_800_60   when qnice_osm_control_i(C_MENU_SVGA_800_60)    = '1' else
-                         C_VIDEO_HDMI_720_5994 when qnice_osm_control_i(C_MENU_HDMI_720_5994)  = '1' else
-                         C_VIDEO_HDMI_640_60   when qnice_osm_control_i(C_MENU_HDMI_640_60)    = '1' else
-                         C_VIDEO_HDMI_5_4_50   when qnice_osm_control_i(C_MENU_HDMI_5_4_50)    = '1' else
+   qnice_video_mode_o <= C_VIDEO_HDMI_5_4_50   when qnice_osm_control_i(C_MENU_HDMI_5_4_50)    = '1' else
                          C_VIDEO_HDMI_4_3_50   when qnice_osm_control_i(C_MENU_HDMI_4_3_50)    = '1' else
                          C_VIDEO_HDMI_16_9_60  when qnice_osm_control_i(C_MENU_HDMI_16_9_60)   = '1' else
                          C_VIDEO_HDMI_16_9_50;
 
+   -- qnice_retro15kHz_o: '1', if the output from the core (post-scandoubler) in the retro 15 kHz analog RGB mode.
+   --             Hint: Scandoubler off does not automatically mean retro 15 kHz on.
+   qnice_scandoubler_o        <= (not qnice_osm_control_i(C_MENU_VGA_15KHZHSVS)) and
+                                 (not qnice_osm_control_i(C_MENU_VGA_15KHZCS));   
+   qnice_retro15kHz_o <= qnice_osm_control_i(C_MENU_VGA_15KHZHSVS) or qnice_osm_control_i(C_MENU_VGA_15KHZCS);
+   qnice_csync_o      <= qnice_osm_control_i(C_MENU_VGA_15KHZCS);
+   
+   -- Zoom out the OSM
+   qnice_osm_cfg_scaling_o    <= (others => '1');
+
    -- Use On-Screen-Menu selections to configure several audio and video settings
    -- Video and audio mode control
    qnice_dvi_o                <= '0';                                         -- 0=HDMI (with sound), 1=DVI (no sound)
-   qnice_scandoubler_o        <= '0';                                         -- no scandoubler
    qnice_audio_mute_o         <= '0';                                         -- audio is not muted
-   qnice_audio_filter_o       <= qnice_osm_control_i(C_MENU_IMPROVE_AUDIO);   -- 0 = raw audio, 1 = use filters from globals.vhd
-   qnice_zoom_crop_o          <= qnice_osm_control_i(C_MENU_HDMI_ZOOM);       -- 0 = no zoom/crop
-   
-   -- These two signals are often used as a pair (i.e. both '1'), particularly when
-   -- you want to run old analog cathode ray tube monitors or TVs (via SCART)
-   -- If you want to provide your users a choice, then a good choice is:
-   --    "Standard VGA":                     qnice_retro15kHz_o=0 and qnice_csync_o=0
-   --    "Retro 15 kHz with HSync and VSync" qnice_retro15kHz_o=1 and qnice_csync_o=0
-   --    "Retro 15 kHz with CSync"           qnice_retro15kHz_o=1 and qnice_csync_o=1
-   qnice_retro15kHz_o         <= '0';
-   qnice_csync_o              <= '0';
-   qnice_osm_cfg_scaling_o    <= (others => '1');
+   qnice_audio_filter_o       <= '1';                                         -- 0 = raw audio, 1 = use filters from globals.vhd
 
    -- ascal filters that are applied while processing the input
    -- 00 : Nearest Neighbour
@@ -439,8 +532,8 @@ begin
    qnice_ascal_triplebuf_o    <= '0';
 
    -- Flip joystick ports (i.e. the joystick in port 2 is used as joystick 1 and vice versa)
-   qnice_flip_joyports_o      <= '0';
-
+   qnice_flip_joyports_o      <= qnice_osm_control_i(C_FLIP_JOYS);
+   
    ---------------------------------------------------------------------------------------------
    -- Core specific device handling (QNICE clock domain)
    ---------------------------------------------------------------------------------------------
@@ -448,26 +541,77 @@ begin
    core_specific_devices : process(all)
    begin
       -- make sure that this is x"EEEE" by default and avoid a register here by having this default value
-      qnice_dev_data_o     <= x"EEEE";
-      qnice_dev_wait_o     <= '0';
+      qnice_dev_data_o <= x"EEEE";
+      qnice_dev_wait_o <= '0';
 
-      -- Demo core specific: Delete before starting to port your core
-      qnice_demo_vd_ce     <= '0';
-      qnice_demo_vd_we     <= '0';
+      -- Default values
+      qnice_dn_wr      <= '0';
+      qnice_dn_addr    <= (others => '0');
+      qnice_dn_data    <= (others => '0');
+      
+      
+      /*
+        <part crc="5873a860" name="mpa-1.3m"></part>
+		<part crc="f4b85974" name="mpa-2.3l"></part>
+		<part crc="2e1a598c" name="mpa-3.3k"></part>
+		<part crc="dd05b587" name="mpa-4.3j"></part>
+		<part crc="e3ee7f75" name="mpe-5.3e"></part>
+		<part crc="cca6d023" name="mpe-4.3f"></part>
+		<part crc="707ace5e" name="mpb-2.3m"></part>
+		<part crc="9b72133a" name="mpb-1.3n"></part>
+		<part crc="a0919392" name="mpe-3.3h"></part>
+		<part crc="c7aa1fb0" name="mpe-2.3k"></part>
+		<part crc="c46a7f72" name="mpe-1.3l"></part>
+		<part crc="561d3108" name="mp-s1.1a"></part>
+     */ 
 
       case qnice_dev_id_i is
-
-         -- Demo core specific stuff: delete before porting your own core
-         when C_DEV_DEMO_VD =>
-            qnice_demo_vd_ce     <= qnice_dev_ce_i;
-            qnice_demo_vd_we     <= qnice_dev_we_i;
-            qnice_dev_data_o     <= qnice_demo_vd_data_o;
-
-         -- @TODO YOUR RAMs or ROMs (e.g. for cartridges) or other devices here
-         -- Device numbers need to be >= 0x0100
-
+        
+        
+         -- 0x0000 
+         when C_DEV_GB_CPU_ROM1 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "00" & qnice_dev_addr_i(13 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM2 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "0100" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM3 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "0101" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM4 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "0110" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM5 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "0111" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM6 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "1000" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM7 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "1001" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM8 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "1010" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+         when C_DEV_GB_CPU_ROM9 =>  
+              qnice_dn_wr   <= qnice_dev_ce_i and qnice_dev_we_i;
+              qnice_dn_addr <= "1011" & qnice_dev_addr_i(11 downto 0);   
+              qnice_dn_data <= qnice_dev_data_i(7 downto 0);
+      
          when others => null;
       end case;
+
+      if qnice_rst_i = '1' then
+         qnice_dn_wr <= '0';
+      end if;
    end process core_specific_devices;
 
    ---------------------------------------------------------------------------------------------
@@ -480,68 +624,6 @@ begin
    -- and make sure that the you configure the port that works with QNICE as a falling edge
    -- by setting G_FALLING_A or G_FALLING_B (depending on which port you use) to true.
 
-   ---------------------------------------------------------------------------------------
-   -- Virtual drive handler
-   --
-   -- Only added for demo-purposes at this place, so that we can demonstrate the
-   -- firmware's ability to browse files and folders. It is very likely, that the
-   -- virtual drive handler needs to be placed somewhere else, for example inside
-   -- main.vhd. We advise to delete this before starting to port a core and re-adding
-   -- it later (and at the right place), if and when needed.
-   ---------------------------------------------------------------------------------------
-
-   -- @TODO:
-   -- a) In case that this is handled in main.vhd, you need to add the appropriate ports to i_main
-   -- b) You might want to change the drive led's color (just like the C64 core does) as long as
-   --    the cache is dirty (i.e. as long as the write process is not finished, yet)
-   main_drive_led_o     <= '0';
-   main_drive_led_col_o <= x"00FF00";  -- 24-bit RGB value for the led
-
-   i_vdrives : entity work.vdrives
-      generic map (
-         VDNUM       => C_VDNUM
-      )
-      port map
-      (
-         clk_qnice_i       => qnice_clk_i,
-         clk_core_i        => main_clk,
-         reset_core_i      => main_reset_core_i,
-
-         -- Core clock domain
-         img_mounted_o     => open,
-         img_readonly_o    => open,
-         img_size_o        => open,
-         img_type_o        => open,
-         drive_mounted_o   => open,
-
-         -- Cache output signals: The dirty flags can be used to enforce data consistency
-         -- (for example by ignoring/delaying a reset or delaying a drive unmount/mount, etc.)
-         -- The flushing flags can be used to signal the fact that the caches are currently
-         -- flushing to the user, for example using a special color/signal for example
-         -- at the drive led
-         cache_dirty_o     => open,
-         cache_flushing_o  => open,
-
-         -- QNICE clock domain
-         sd_lba_i          => (others => (others => '0')),
-         sd_blk_cnt_i      => (others => (others => '0')),
-         sd_rd_i           => (others => '0'),
-         sd_wr_i           => (others => '0'),
-         sd_ack_o          => open,
-
-         sd_buff_addr_o    => open,
-         sd_buff_dout_o    => open,
-         sd_buff_din_i     => (others => (others => '0')),
-         sd_buff_wr_o      => open,
-
-         -- QNICE interface (MMIO, 4k-segmented)
-         -- qnice_addr is 28-bit because we have a 16-bit window selector and a 4k window: 65536*4096 = 268.435.456 = 2^28
-         qnice_addr_i      => qnice_dev_addr_i,
-         qnice_data_i      => qnice_dev_data_i,
-         qnice_data_o      => qnice_demo_vd_data_o,
-         qnice_ce_i        => qnice_demo_vd_ce,
-         qnice_we_i        => qnice_demo_vd_we
-      ); -- i_vdrives
 
 end architecture synthesis;
 
