@@ -390,6 +390,7 @@ begin
          G_VDNUM              => C_VDNUM
       )
       port map (
+         G_BOARD              => G_BOARD,
          clk_main_i           => main_clk,
          clk_sound_i          => sound_clk_3m6,
          reset_soft_i         => main_reset_core_i,

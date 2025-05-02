@@ -18,6 +18,7 @@ entity main is
       G_VDNUM                 : natural                     -- amount of virtual drives
    );
    port (
+      G_BOARD                 : in  string;
       clk_main_i              : in  std_logic;
       clk_sound_i             : in  std_logic;
       reset_soft_i            : in  std_logic;
@@ -125,21 +126,29 @@ constant C_MENU_V4         : integer := 41;
 constant C_MENU_V8         : integer := 42;
 constant C_MENU_V16        : integer := 43;
 
-signal HPOS,VPOS              : std_logic_vector(3 downto 0);
-signal JOY                    : std_logic_vector(7 downto 0);
-signal JOY2                   : std_logic_vector(7 downto 0);
-signal dual_controls          : std_logic;
-signal p1_jump_auto           : std_logic;
-signal p2_jump_auto           : std_logic;
-signal trigger_sel            : std_logic_vector(3 downto 0);
-signal trigger_en             : std_logic;
-signal pal_mode               : std_logic;
+signal HPOS,VPOS            : std_logic_vector(3 downto 0);
+signal JOY                  : std_logic_vector(7 downto 0);
+signal JOY2                 : std_logic_vector(7 downto 0);
+signal dual_controls        : std_logic;
+signal p1_jump_auto         : std_logic;
+signal p2_jump_auto         : std_logic;
+signal trigger_sel          : std_logic_vector(3 downto 0);
+signal trigger_en           : std_logic;
+signal pal_mode             : std_logic;
 
 begin
     
-    audio_left_o(15 downto 0) <= audio(12 downto 0) & "000";
-    audio_right_o(15 downto 0) <= audio(12 downto 0) & "000";
-    
+    process(G_BOARD)
+    begin
+        if G_BOARD = "MEGA65_R3" then
+            audio_left_o(15 downto 0)  <= audio(12 downto 0) & "000";
+            audio_right_o(15 downto 0) <= audio(12 downto 0) & "000";
+        else
+            audio_left_o  <= resize(audio, 16);
+            audio_right_o <= resize(audio, 16);
+        end if;
+    end process;
+            
     options(0)  <= osm_control_i(C_MENU_OSMPAUSE);
     pal_mode    <= osm_control_i(C_MENU_PALMODE);
 
