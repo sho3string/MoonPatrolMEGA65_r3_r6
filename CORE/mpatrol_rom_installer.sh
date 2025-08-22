@@ -2,7 +2,7 @@
 
 # Get the current working directory
 WORKING_DIR="$(pwd)"
-LENGTH=48
+LENGTH=49
 
 clear
 echo " .-------------------------."
