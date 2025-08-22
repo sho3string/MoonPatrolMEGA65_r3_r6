@@ -1,5 +1,5 @@
 $WorkingDirectory = Get-Location
-$length = 48
+$length = 49
 
 	cls
 	Write-Output " .-------------------------."
@@ -40,5 +40,6 @@ $length = 48
 	$output_file = Join-Path -Path $WorkingDirectory -ChildPath "arcade\mpatrol\mpcfg"
 	$output_directory = [System.IO.Path]::GetDirectoryName($output_file)
 	[System.IO.File]::WriteAllBytes($output_file,$bytes)
+
 
 	Write-Output "All done!"
